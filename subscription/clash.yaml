@@ -1,0 +1,29 @@
+# clash.yaml — Clash / mihomo 订阅配置（节点列表）
+# 用途：发布到 GitHub 仓库 jarodHAN/clash-yaml（分支 main）后，
+#       将下方 raw 链接填进 clashVPN.app 的「订阅 URL」即可自动加载节点：
+#       https://raw.githubusercontent.com/jarodHAN/clash-yaml/main/clash.yaml
+#
+# ⚠️ 请整体替换下方 proxies: 为你机场后台 “Clash / 订阅” 格式导出的 YAML
+#    （通常就是一段以 proxies: 开头的节点列表）。示例节点仅占位，不可用。
+
+proxies:
+  - name: "示例节点-请替换"
+    type: ss
+    server: 0.0.0.0
+    port: 8388
+    cipher: aes-256-gcm
+    password: "your-password"
+
+proxy-groups:
+  - name: PROXY
+    type: select
+    proxies:
+      - "示例节点-请替换"
+      - DIRECT
+
+rules:
+  - DOMAIN-SUFFIX,cn,DIRECT
+  - DOMAIN-KEYWORD,cn,DIRECT
+  # 若已在 mihomo 数据目录放好 geoip.metadb，可加回下面这行做 IP 级分流：
+  # - GEOIP,CN,DIRECT
+  - MATCH,PROXY

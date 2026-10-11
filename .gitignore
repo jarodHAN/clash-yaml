@@ -1,0 +1,7 @@
+build/
+*.app
+*.metadb
+*.dat
+.DS_Store
+.workbuddy/
+Resources/mihomo
