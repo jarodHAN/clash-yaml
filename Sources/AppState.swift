@@ -36,20 +36,23 @@ final class AppState: ObservableObject {
     func start() {
         statusMessage = "正在启动…"
         let sub = subscriptionURL.isEmpty ? nil : subscriptionURL
-        core.start(subscription: sub) { [weak self] result in
-            guard let self = self else { return }
-            DispatchQueue.main.async {
-                switch result {
-                case .success:
-                    self.isRunning = true
-                    self.controller = ClashController(secret: self.core.secret)
-                    self.connect()
-                    self.onStatusChange?(true)
-                    self.setSystemProxy(true)
-                    self.statusMessage = "运行中"
-                case .failure(let e):
-                    self.statusMessage = "启动失败：\(e.localizedDescription)"
-                    self.isRunning = false
+        // 订阅可能在配置阶段被下载（最多 ~25s），放到后台避免界面卡死
+        DispatchQueue.global(qos: .userInitiated).async {
+            self.core.start(subscription: sub) { [weak self] result in
+                guard let self = self else { return }
+                DispatchQueue.main.async {
+                    switch result {
+                    case .success:
+                        self.isRunning = true
+                        self.controller = ClashController(secret: self.core.secret)
+                        self.connect()
+                        self.onStatusChange?(true)
+                        self.setSystemProxy(true)
+                        self.statusMessage = "运行中"
+                    case .failure(let e):
+                        self.statusMessage = "启动失败：\(e.localizedDescription)"
+                        self.isRunning = false
+                    }
                 }
             }
         }

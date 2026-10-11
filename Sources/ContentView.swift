@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 struct ContentView: View {
     @EnvironmentObject var state: AppState
@@ -89,6 +90,7 @@ struct ContentView: View {
                 Text(state.logs.joined(separator: "\n"))
                     .font(.system(size: 9, design: .monospaced))
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    .textSelection(.enabled)
             }
             .frame(height: 80)
 
@@ -96,6 +98,17 @@ struct ContentView: View {
                 Text(state.statusMessage)
                     .font(.caption)
                     .foregroundColor(.orange)
+            }
+
+            Divider()
+
+            HStack {
+                Spacer()
+                Button("退出应用") {
+                    NSApplication.shared.terminate(nil)
+                }
+                .foregroundColor(.red)
+                .font(.caption)
             }
         }
         .padding(12)

@@ -5,3 +5,9 @@ build/
 .DS_Store
 .workbuddy/
 Resources/mihomo
+
+# 探索阶段产物（非本 App 源码，不入库）
+clash-free-nodes-action/
+clash-verge-rev-config.yaml
+clash-verge-rev-subscription.yaml
+HANDOFF-clash-verge-yaml.md
