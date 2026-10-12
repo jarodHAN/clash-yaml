@@ -24,11 +24,12 @@ final class AppState: ObservableObject {
     private var lastDown: Double = 0
 
     private let udKey = "clashVPN.subscriptionURL"
+    private let defaultSubscriptionURL = "https://raw.githubusercontent.com/jarodHAN/clash-yaml/main/subscription/clash.yaml"
 
     var onStatusChange: ((Bool) -> Void)?
 
     init() {
-        subscriptionURL = UserDefaults.standard.string(forKey: udKey) ?? ""
+        subscriptionURL = UserDefaults.standard.string(forKey: udKey) ?? defaultSubscriptionURL
     }
 
     // MARK: - lifecycle
