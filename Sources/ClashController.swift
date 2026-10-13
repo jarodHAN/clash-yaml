@@ -4,7 +4,12 @@ import Foundation
 final class SSEConnection: NSObject, URLSessionDataDelegate {
     private var session: URLSession?
     private var task: URLSessionDataTask?
-    private var buffer = ""
+    // Raw byte buffer (not String) so we never build an invalid String.Index.
+    // Swift String indexing traps (EXC_BAD_INSTRUCTION / SIGILL) when given an
+    // out-of-bounds index — exactly what crashed the app on the SSE delegate
+    // queue. Operating on Data bytes sidesteps that entire class of bug and also
+    // handles mid-character UTF-8 splits and CRLF line endings correctly.
+    private var leftovers = Data()
     private let onEvent: (String) -> Void
     private let secret: String
 
@@ -22,17 +27,25 @@ final class SSEConnection: NSObject, URLSessionDataDelegate {
     }
 
     func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
-        guard let str = String(data: data, encoding: .utf8) else { return }
-        buffer += str
-        while let range = buffer.range(of: "\n") {
-            let line = String(buffer[buffer.startIndex..<range.lowerBound])
-            buffer.removeSubrange(buffer.startIndex...range.upperBound)
-            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !data.isEmpty else { return }
+        var buf = leftovers
+        buf.append(data)
+        // Split on LF (0x0A) at the byte level. This never creates an invalid
+        // String index, tolerates UTF-8 characters split across chunks, and treats
+        // CRLF (\r\n) correctly (the trailing CR is stripped below).
+        while let nl = buf.firstIndex(of: 0x0A) {
+            let lineLen = buf.distance(from: buf.startIndex, to: nl)
+            var line = buf.subdata(in: buf.startIndex..<nl)
+            buf.removeFirst(lineLen + 1) // drop the line bytes + the LF itself
+            if line.last == 0x0D { line.removeLast() } // strip a trailing CR if present
+            guard let str = String(data: line, encoding: .utf8) else { continue }
+            let trimmed = str.trimmingCharacters(in: .whitespacesAndNewlines)
             if trimmed.hasPrefix("data:") {
                 let payload = String(trimmed.dropFirst(5)).trimmingCharacters(in: .whitespacesAndNewlines)
                 if !payload.isEmpty { onEvent(payload) }
             }
         }
+        leftovers = buf
     }
 
     func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
