@@ -52,17 +52,30 @@ xattr -d com.apple.quarantine build/clashVPN.app
 ## 使用
 
 1. 启动后菜单栏出现图标，左键展开面板
-2. 在「订阅 URL」粘贴你的 Clash 订阅地址（节点列表或完整配置均可）
+2. 「订阅 URL」**已预填**公开仓库地址（见下），首次启动即自动拉取节点，无需手动粘贴；也可在此改为你自己的订阅（节点列表或完整配置均可）
 3. 点「应用并重启」→ mihomo 拉起，节点出现在面板
 4. 点击节点切换，或「测速全部」查看延迟
 5. 退出：面板底部「退出应用」按钮，或菜单「退出」（⌘Q）
 
+### 预构建（免编译）
+
+`build/clashVPN.app.zip` 为已打包好的成品（内嵌 mihomo 核心），解压后直接拖到「应用程序」或双击运行即可：
+
+```bash
+# 解压
+tar -xzf build/clashVPN.app.zip -C ~/Applications  # 或双击解压到任意位置
+xattr -d com.apple.quarantine ~/Applications/clashVPN.app   # 若被拦截
+open ~/Applications/clashVPN.app
+```
+
+> 预构建包不随源码提交（`.gitignore` 排除），仅在本地 `build/` 目录提供。
+
 ### 订阅托管（clash.yaml）
 
-把 `subscription/clash.yaml` 上传到公开仓库 `jarodHAN/clash-yaml`（分支 `main`），App 内填：
+`subscription/clash.yaml` 已托管到公开仓库 `jarodHAN/clash-yaml`（分支 `main`），**App 默认即填此地址**：
 
 ```
-https://raw.githubusercontent.com/jarodHAN/clash-yaml/main/clash.yaml
+https://raw.githubusercontent.com/jarodHAN/clash-yaml/main/subscription/clash.yaml
 ```
 
 详见 `subscription/README.md`。公开仓库会暴露节点信息，注意风险；机密场景建议私有仓库 + token raw 链接，或 App 内直连机场订阅。
