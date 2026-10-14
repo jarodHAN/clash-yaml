@@ -5,6 +5,8 @@ final class MihomoCore {
     let controllerPort = 9090
     let secret = "clashvpn-\(UUID().uuidString)"
     private(set) var process: Process?
+    /// Cached flag: is passwordless `sudo networksetup` available? nil = not yet decided.
+    private var sudoProxyReady: Bool?
 
     var configDir: URL {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -263,11 +265,38 @@ final class MihomoCore {
     }
 
     /// Toggle the macOS system HTTP/HTTPS proxy through the primary network service.
+    ///
+    /// Strategy to avoid the repeated `osascript` admin-password prompt:
+    /// 1. On the first call, check whether passwordless `sudo networksetup` works.
+    /// 2. If not, do a ONE-TIME admin prompt that installs a `/etc/sudoers.d/clashvpn`
+    ///    rule granting this user NOPASSWD for `networksetup`. After that, proxy changes
+    ///    run via `sudo -n` with no prompt — ever again.
+    /// 3. If the one-time setup is unavailable/declined, fall back to the per-call
+    ///    `osascript ... with administrator privileges` prompt (original behavior).
     func setSystemProxy(enabled: Bool) {
         DispatchQueue.global().async {
             let service = self.activeService()
             let port = "\(self.mixedPort)"
             let state = enabled ? "on" : "off"
+
+            // Decide once whether we can use passwordless sudo.
+            if self.sudoProxyReady == nil {
+                if self.sudoProxyAvailable() {
+                    self.sudoProxyReady = true
+                } else {
+                    self.ensureSudoProxyAccess()   // single admin prompt, installs sudoers rule
+                    self.sudoProxyReady = self.sudoProxyAvailable()
+                }
+            }
+
+            if self.sudoProxyReady == true {
+                let ok1 = self.runSudoNetworksetup(["-setwebproxy", service, "127.0.0.1", port, state])
+                let ok2 = self.runSudoNetworksetup(["-setsecurewebproxy", service, "127.0.0.1", port, state])
+                if ok1 && ok2 { return }
+                // sudo unexpectedly failed — fall through to the osascript prompt.
+            }
+
+            // Fallback: prompt for admin rights via AppleScript (original behavior).
             let inner = "networksetup -setwebproxy '\(service)' 127.0.0.1 \(port) \(state); networksetup -setsecurewebproxy '\(service)' 127.0.0.1 \(port) \(state)"
             let script = "do shell script \"\(inner)\" with administrator privileges"
             let p = Process()
@@ -276,6 +305,49 @@ final class MihomoCore {
             try? p.run()
             p.waitUntilExit()
         }
+    }
+
+    // MARK: - privileged proxy access (one-time sudoers setup)
+
+    /// True if `sudo -n networksetup` can run without a password prompt.
+    private func sudoProxyAvailable() -> Bool {
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/usr/bin/sudo")
+        p.arguments = ["-n", "/usr/sbin/networksetup", "-getwebproxy", "Wi-Fi"]
+        try? p.run()
+        p.waitUntilExit()
+        return p.terminationStatus == 0
+    }
+
+    /// Run a `networksetup` subcommand via passwordless sudo. Returns success.
+    private func runSudoNetworksetup(_ args: [String]) -> Bool {
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/usr/bin/sudo")
+        p.arguments = ["-n", "/usr/sbin/networksetup"] + args
+        try? p.run()
+        p.waitUntilExit()
+        return p.terminationStatus == 0
+    }
+
+    /// One-time admin authorization: install a sudoers.d rule so future `networksetup`
+    /// calls need no password. Triggers a single `osascript` admin-password prompt.
+    private func ensureSudoProxyAccess() {
+        let user = NSUserName()
+        let scriptBody = """
+        tmp=$(mktemp /tmp/clashvpn.XXXXXX)
+        printf '%s\\n' '\(user) ALL=(root) NOPASSWD: /usr/sbin/networksetup' > "$tmp"
+        visudo -cf "$tmp" && install -m 0440 "$tmp" /etc/sudoers.d/clashvpn
+        rm -f "$tmp"
+
+        """
+        let tmpURL = URL(fileURLWithPath: "/tmp/clashvpn_setup.sh")
+        try? scriptBody.write(to: tmpURL, atomically: true, encoding: .utf8)
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+        p.arguments = ["-e", "do shell script \"bash '/tmp/clashvpn_setup.sh'\" with administrator privileges"]
+        try? p.run()
+        p.waitUntilExit()
+        try? FileManager.default.removeItem(at: tmpURL)
     }
 
     private func activeService() -> String {
