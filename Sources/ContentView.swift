@@ -28,6 +28,9 @@ struct ContentView: View {
                     state.setSystemProxy(!state.systemProxyOn)
                 }
                 .disabled(!state.isRunning)
+                Button("重新授权") { state.reauthorizeProxy() }
+                    .font(.caption)
+                    .disabled(!state.isRunning)
                 Button("刷新") { state.refreshProxies() }
                     .disabled(!state.isRunning)
             }

@@ -299,4 +299,10 @@ final class AppState: ObservableObject {
         systemProxyOn = on
         core.setSystemProxy(enabled: on)
     }
+
+    /// 清除一次性授权标记并重设系统代理，用于 sudoers 安装失败/取消后重试。
+    func reauthorizeProxy() {
+        core.resetSudoersAuthorization()
+        setSystemProxy(true)
+    }
 }
