@@ -28,3 +28,10 @@ struct ProviderInfo: Identifiable, Codable {
 struct ProvidersResponse: Codable {
     let providers: [String: ProviderInfo]
 }
+
+/// 可选的预设订阅地址（公开 YAML），用户可在 UI 中一键填入。
+struct PresetSubscription: Identifiable {
+    let id: String      // 稳定字符串，便于 Picker 选中
+    let name: String
+    let url: String
+}

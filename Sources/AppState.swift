@@ -10,10 +10,19 @@ final class AppState: ObservableObject {
     @Published var upSpeed: Double = 0
     @Published var downSpeed: Double = 0
     @Published var subscriptionURL = ""
+    /// 当前选中的预设订阅 ID（与 Picker 绑定）。自定义输入时为 "custom"。
+    @Published var selectedPresetID: String = ""
     @Published var statusMessage = "未启动"
     @Published var systemProxyOn = false
     /// Per-node latency keyed by "group|node". Value <0 means timeout.
     @Published var delayMap: [String: Int] = [:]
+
+    // 订阅地址连通性测试结果
+    @Published var subscriptionTesting = false
+    @Published var subscriptionTestResult = ""
+    // 代理通路测试结果（经本地 mixed-port 实测出网）
+    @Published var connectivityTesting = false
+    @Published var connectivityResult = ""
 
     let core = MihomoCore()
     private var controller: ClashController?
@@ -24,12 +33,25 @@ final class AppState: ObservableObject {
     private var lastDown: Double = 0
 
     private let udKey = "clashVPN.subscriptionURL"
-    private let defaultSubscriptionURL = "https://raw.githubusercontent.com/jarodHAN/clash-yaml/main/subscription/clash.yaml"
+    /// 默认订阅：公开 Clash-Meta 节点聚合，走 ghproxy 镜像以保证本机可达。
+    private let defaultSubscriptionURL = "https://ghproxy.net/https://raw.githubusercontent.com/chengaopan/AutoMergePublicNodes/master/list.meta.yml"
+
+    /// 可选订阅地址列表（公开 YAML）。raw.githubusercontent.com 在国内被墙，
+    /// 统一加 ghproxy.net 镜像前缀确保可达。
+    let presetSubscriptions: [PresetSubscription] = [
+        PresetSubscription(id: "direct",    name: "直连（不使用订阅）", url: ""),
+        PresetSubscription(id: "automerged", name: "AutoMergePublicNodes (Meta)", url: "https://ghproxy.net/https://raw.githubusercontent.com/chengaopan/AutoMergePublicNodes/master/list.meta.yml"),
+        PresetSubscription(id: "proxypool", name: "proxypool (Meta)", url: "https://ghproxy.net/https://raw.githubusercontent.com/snakem982/proxypool/main/source/clash-meta-2.yaml"),
+        PresetSubscription(id: "mfuu",      name: "mfuu/FreeProxies", url: "https://ghproxy.net/https://raw.githubusercontent.com/mfuu/FreeProxies/master/sub.yaml"),
+        PresetSubscription(id: "freenodes", name: "FreeNodes (AI)", url: "https://ghproxy.net/https://raw.githubusercontent.com/Barabama/FreeNodes/feat/ai-crawler-v2/nodes/merged.yaml"),
+        PresetSubscription(id: "mine",      name: "我的 clash-yaml", url: "https://ghproxy.net/https://raw.githubusercontent.com/jarodHAN/clash-yaml/main/subscription/clash.yaml")
+    ]
 
     var onStatusChange: ((Bool) -> Void)?
 
     init() {
         subscriptionURL = UserDefaults.standard.string(forKey: udKey) ?? defaultSubscriptionURL
+        selectedPresetID = presetSubscriptions.first(where: { $0.url == subscriptionURL })?.id ?? "custom"
     }
 
     // MARK: - lifecycle
@@ -152,6 +174,103 @@ final class AppState: ObservableObject {
                 self?.refreshProxies()
             }
         }
+    }
+
+    // MARK: - 可选订阅地址
+
+    /// 把选中的预设订阅地址填进 subscriptionURL（不立即应用，由用户点「应用」）。
+    func usePreset(_ id: String) {
+        guard let p = presetSubscriptions.first(where: { $0.id == id }) else { return }
+        subscriptionURL = p.url
+    }
+
+    /// 测试订阅地址「通路」：拉取 URL 并校验内容是否为合法 Clash YAML。
+    func testSubscriptionURL() {
+        let url = subscriptionURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !url.isEmpty else {
+            subscriptionTestResult = "⚠️ 地址为空"
+            return
+        }
+        subscriptionTesting = true
+        subscriptionTestResult = "测试通路中…"
+        DispatchQueue.global(qos: .userInitiated).async {
+            let tmp = FileManager.default.temporaryDirectory
+                .appendingPathComponent("clashvpn_subtest_\(UUID().uuidString).yaml")
+            let p = Process()
+            p.executableURL = URL(fileURLWithPath: "/usr/bin/curl")
+            p.arguments = ["-sL", "-o", tmp.path,
+                           "-w", "%{http_code} %{time_total} %{size_download}",
+                           "--max-time", "25", url]
+            let pipe = Pipe()
+            p.standardOutput = pipe
+            try? p.run()
+            p.waitUntilExit()
+            let out = String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+            let parts = out.split(separator: " ")
+            let code = parts.first.map(String.init) ?? "?"
+            let time = parts.count > 1 ? String(parts[1]) : "?"
+            let size = parts.count > 2 ? String(parts[2]) : "0"
+            let sizeKB = (Int(size) ?? 0) / 1024
+            let content = (try? String(contentsOf: tmp, encoding: .utf8)) ?? ""
+            let looksYaml = content.contains("proxies:")
+                || content.contains("proxy-providers:")
+                || content.contains("rules:")
+            DispatchQueue.main.async {
+                self.subscriptionTesting = false
+                if p.terminationStatus == 0 && code == "200" && looksYaml {
+                    self.subscriptionTestResult = "✅ 可达（\(time)s，\(sizeKB)KB）内容有效"
+                } else if p.terminationStatus == 0 && code == "200" {
+                    self.subscriptionTestResult = "⚠️ 可达但内容不像 Clash YAML（HTTP 200）"
+                } else {
+                    self.subscriptionTestResult = "❌ 无法连接（HTTP \(code)，退出码 \(p.terminationStatus)）"
+                }
+            }
+        }
+    }
+
+    // MARK: - 代理通路测试
+
+    /// 测试代理「通路」：经由本地 mixed-port 代理实测能否出网（generate_204）。
+    func testConnectivity() {
+        guard isRunning else {
+            connectivityResult = "未运行，请先启动"
+            return
+        }
+        connectivityTesting = true
+        connectivityResult = "正在测试通路…"
+        let port = core.mixedPort
+        let config = URLSessionConfiguration.ephemeral
+        config.timeoutIntervalForResource = 20
+        config.connectionProxyDictionary = [
+            kCFNetworkProxiesHTTPEnable: 1,
+            kCFNetworkProxiesHTTPProxy: "127.0.0.1",
+            kCFNetworkProxiesHTTPPort: port,
+            kCFNetworkProxiesHTTPSEnable: 1,
+            kCFNetworkProxiesHTTPSProxy: "127.0.0.1",
+            kCFNetworkProxiesHTTPSPort: port
+        ]
+        let session = URLSession(configuration: config)
+        let start = Date()
+        let url = URL(string: "http://www.gstatic.com/generate_204")!
+        session.dataTask(with: url) { _, resp, err in
+            DispatchQueue.main.async {
+                self.connectivityTesting = false
+                guard let http = resp as? HTTPURLResponse else {
+                    if let err = err {
+                        self.connectivityResult = "❌ 通路失败：\(err.localizedDescription)"
+                    } else {
+                        self.connectivityResult = "❌ 通路失败：无响应"
+                    }
+                    return
+                }
+                let ms = Int(Date().timeIntervalSince(start) * 1000)
+                if (200...399).contains(http.statusCode) {
+                    self.connectivityResult = "✅ 通路正常（\(ms)ms，HTTP \(http.statusCode)）"
+                } else {
+                    self.connectivityResult = "⚠️ 通路有响应但异常（HTTP \(http.statusCode)）"
+                }
+            }
+        }.resume()
     }
 
     func stop() {

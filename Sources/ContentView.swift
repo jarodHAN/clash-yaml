@@ -75,12 +75,59 @@ struct ContentView: View {
 
             Divider()
 
+            // 可选订阅地址（预设）
+            HStack(spacing: 6) {
+                Picker("可选订阅", selection: $state.selectedPresetID) {
+                    ForEach(state.presetSubscriptions) { p in
+                        Text(p.name).tag(p.id)
+                    }
+                    Text("自定义").tag("custom")
+                }
+                .pickerStyle(.menu)
+                .frame(maxWidth: .infinity)
+                .onChange(of: state.selectedPresetID) { _ in
+                    state.usePreset(state.selectedPresetID)
+                }
+            }
+
             HStack(spacing: 6) {
                 TextField("订阅 URL（留空为直连）", text: $state.subscriptionURL)
                     .textFieldStyle(.roundedBorder)
+                    .onChange(of: state.subscriptionURL) { _ in
+                        // 用户手动改了地址 -> 标记为自定义，避免与预设选中态冲突
+                        if !state.presetSubscriptions.contains(where: { $0.url == state.subscriptionURL }) {
+                            state.selectedPresetID = "custom"
+                        }
+                    }
+                Button("测试") { state.testSubscriptionURL() }
+                    .font(.caption)
+                    .disabled(state.subscriptionTesting)
                 Button("应用") { state.applySubscription() }
                 Button("更新") { state.updateSubscription() }
                     .disabled(!state.isRunning)
+            }
+            if !state.subscriptionTestResult.isEmpty {
+                Text(state.subscriptionTestResult)
+                    .font(.caption2)
+                    .foregroundColor(state.subscriptionTestResult.hasPrefix("✅") ? .green
+                        : (state.subscriptionTestResult.hasPrefix("❌") ? .red : .orange))
+            }
+
+            Divider()
+
+            // 通路测试
+            HStack(spacing: 6) {
+                Text("通路测试").font(.caption).foregroundColor(.secondary)
+                Spacer()
+                Button(state.connectivityTesting ? "测试中…" : "测试通路") { state.testConnectivity() }
+                    .font(.caption)
+                    .disabled(!state.isRunning || state.connectivityTesting)
+            }
+            if !state.connectivityResult.isEmpty {
+                Text(state.connectivityResult)
+                    .font(.caption2)
+                    .foregroundColor(state.connectivityResult.hasPrefix("✅") ? .green
+                        : (state.connectivityResult.hasPrefix("❌") ? .red : .orange))
             }
 
             Divider()
