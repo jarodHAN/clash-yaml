@@ -44,6 +44,9 @@ final class AppState: ObservableObject {
         PresetSubscription(id: "proxypool", name: "proxypool (Meta)", url: "https://ghproxy.net/https://raw.githubusercontent.com/snakem982/proxypool/main/source/clash-meta-2.yaml"),
         PresetSubscription(id: "mfuu",      name: "mfuu/FreeProxies", url: "https://ghproxy.net/https://raw.githubusercontent.com/mfuu/FreeProxies/master/sub.yaml"),
         PresetSubscription(id: "freenodes", name: "FreeNodes (AI)", url: "https://ghproxy.net/https://raw.githubusercontent.com/Barabama/FreeNodes/feat/ai-crawler-v2/nodes/merged.yaml"),
+        PresetSubscription(id: "lyqnihao",  name: "lyqnihao/proxy (Meta)", url: "https://ghproxy.net/https://raw.githubusercontent.com/lyqnihao/proxy/main/clash-meta/output.yaml"),
+        PresetSubscription(id: "kooker",    name: "FreeSubsCheck (Meta)", url: "https://ghproxy.net/https://raw.githubusercontent.com/kooker/FreeSubsCheck/main/mihomo.yaml"),
+        PresetSubscription(id: "shuaidaoya",name: "shuaidaoya/FreeNodes", url: "https://ghproxy.net/https://raw.githubusercontent.com/shuaidaoya/FreeNodes/main/nodes/all.yaml"),
         PresetSubscription(id: "mine",      name: "我的 clash-yaml", url: "https://ghproxy.net/https://raw.githubusercontent.com/jarodHAN/clash-yaml/main/subscription/clash.yaml")
     ]
 
